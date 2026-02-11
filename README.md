@@ -1,6 +1,7 @@
 # Canvas LMS Conversational AI Agent
 
 An agentic AI pipeline that connects Claude to your Canvas LMS, letting you ask about upcoming assignments, quizzes, and deadlines in plain English.
+Deployed at: [Streamlit App](https://canvas-gpt.streamlit.app/)
 
 ## Architecture
 
