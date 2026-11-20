@@ -252,13 +252,18 @@ class GroqProvider:
 
 # ── Factory ──────────────────────────────────────────────────────────
 
-# Model ID → provider class
-GROQ_MODELS = {
-    "meta-llama/llama-4-scout-17b-16e-instruct",
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
-    "mixtral-8x7b-32768",
+# Single source of truth for selectable models.
+# Display label → (model ID, provider). Add or remove models here only;
+# the Streamlit dropdown and provider routing are both built from this.
+MODELS: dict[str, tuple[str, str]] = {
+    "Claude Sonnet 4.5": ("claude-sonnet-4-5-20250929", "anthropic"),
+    "Claude Haiku 4.5": ("claude-haiku-4-5-20251001", "anthropic"),
+    # "Claude Opus 4.6": ("claude-opus-4-6", "anthropic"),
+    "GPT-OSS 120B (Groq)": ("openai/gpt-oss-120b", "groq"),
+    "GPT-OSS 20B (Groq)": ("openai/gpt-oss-20b", "groq"),
 }
+
+GROQ_MODELS = {model_id for model_id, provider in MODELS.values() if provider == "groq"}
 
 
 def create_provider(model: str) -> AnthropicProvider | GroqProvider:

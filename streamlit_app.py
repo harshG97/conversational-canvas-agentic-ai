@@ -51,24 +51,18 @@ if canvas_missing:
 # ── Lazy-import agent (after env validation) ─────────────────────────
 
 from canvas_agent.agent import DEFAULT_MODEL, Agent  # noqa: E402
+from canvas_agent.providers import MODELS  # noqa: E402
 
 # ── Sidebar: model picker ────────────────────────────────────────────
 
-AVAILABLE_MODELS = {
-    "Claude Sonnet 4.5": "claude-sonnet-4-5-20250929",
-    "Claude Haiku 4.5": "claude-haiku-4-5-20251001",
-    #"Claude Opus 4.6": "claude-opus-4-6",
-    "Llama 4 Scout 17B (Groq)": "meta-llama/llama-4-scout-17b-16e-instruct",
-    "Llama 3.3 70B (Groq)": "llama-3.3-70b-versatile",
-    "Llama 3.1 8B (Groq)": "llama-3.1-8b-instant",
-    #"Mixtral 8x7B (Groq)": "mixtral-8x7b-32768",
-}
+# Built from canvas_agent/providers.py MODELS; edit models there.
+AVAILABLE_MODELS = {label: model_id for label, (model_id, _) in MODELS.items()}
 
 # Resolve which model name to pre-select based on env / default
 _env_model = os.environ.get("ANTHROPIC_MODEL", DEFAULT_MODEL)
 _default_label = next(
     (k for k, v in AVAILABLE_MODELS.items() if v == _env_model),
-    "Claude Sonnet 4.5",
+    next(iter(AVAILABLE_MODELS)),
 )
 
 with st.sidebar:
@@ -81,7 +75,7 @@ with st.sidebar:
     selected_model = AVAILABLE_MODELS[selected_label]
 
     # Check that the right API key is set for the selected provider
-    is_groq = "Groq" in selected_label
+    is_groq = MODELS[selected_label][1] == "groq"
     if is_groq and not os.environ.get("GROQ_API_KEY"):
         st.warning("Set **GROQ_API_KEY** in `.env` to use Groq models.")
     elif not is_groq and not os.environ.get("ANTHROPIC_API_KEY"):
