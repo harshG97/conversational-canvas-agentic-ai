@@ -31,7 +31,8 @@ Guidelines:
 - get_all_upcoming_deadlines already removes quiz duplicates. If you use the
   per-course tools and an item appears as both a quiz and an assignment,
   treat it as a quiz.
-- If a deadline has no due date, mention that it has no listed due date.
+- Items without a due date are listed under "no_due_date". Mention them
+  briefly at the end as having no listed due date.
 - Be concise but thorough — list every relevant item.
 - If something goes wrong with the Canvas API, explain the error clearly.
 - When the user asks to add deadlines to their calendar, use the

@@ -6,6 +6,7 @@ import json
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 from typing import Callable
 
 from .canvas_client import CanvasClient
@@ -81,6 +82,77 @@ def resolve_tool_range(inp: dict):
         inp.get("end_date"),
         days_ahead=parse_days_ahead(days) if days is not None else None,
     )
+
+
+# ── Model view ───────────────────────────────────────────────────────
+# The cache and the calendar tool keep full Canvas data. Only this slim
+# view is sent to the LLM, to keep requests small (Groq free tier).
+
+def _friendly_due(due_at) -> str | None:
+    """'2026-11-20T23:59:00-05:00' → 'Fri Nov 20, 11:59 PM'."""
+    if not due_at:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(due_at).replace("Z", "+00:00"))
+    except ValueError:
+        return str(due_at)
+    hour = dt.strftime("%I").lstrip("0")
+    text = f"{dt:%a %b} {dt.day}, {hour}:{dt:%M %p}"
+    if dt.year != datetime.now(dt.tzinfo).year:
+        text += f" {dt.year}"
+    return text
+
+
+def _slim_items(items: list, default_type: str | None = None) -> dict:
+    """Split items into slim dated entries and a names-only undated list."""
+    dated: list[dict] = []
+    undated: list[str] = []
+    for it in items:
+        name = it.get("name") or it.get("title") or "Untitled"
+        if not it.get("due_at"):
+            undated.append(name)
+            continue
+        item_type = it.get("type") or (
+            "quiz" if it.get("is_new_quiz") else default_type
+        )
+        slim = {"name": name, "due": _friendly_due(it.get("due_at"))}
+        if item_type:
+            slim["type"] = item_type
+        if "has_submitted" in it:
+            slim["submitted"] = it["has_submitted"]
+        dated.append(slim)
+    out: dict = {"deadlines": dated}
+    if undated:
+        out["no_due_date"] = undated
+    return out
+
+
+def model_view(tool_name: str, data: object) -> object:
+    """Return the slim version of a tool result that is sent to the LLM."""
+    if isinstance(data, dict) and "error" in data:
+        return data
+    if tool_name == "get_all_upcoming_deadlines" and isinstance(data, dict):
+        deadlines: dict = {}
+        no_due: dict = {}
+        for course, items in data.items():
+            slim = _slim_items(items)
+            if slim["deadlines"]:
+                deadlines[course] = slim["deadlines"]
+            if slim.get("no_due_date"):
+                no_due[course] = slim["no_due_date"]
+        out: dict = {"deadlines": deadlines}
+        if no_due:
+            out["no_due_date"] = no_due
+        return out
+    if tool_name == "get_upcoming_assignments" and isinstance(data, list):
+        return _slim_items(data, default_type="assignment")
+    if tool_name == "get_upcoming_quizzes" and isinstance(data, list):
+        return _slim_items(data, default_type="quiz")
+    return data
+
+
+def to_model_json(tool_name: str, data: object) -> str:
+    return json.dumps(model_view(tool_name, data), default=str, separators=(",", ":"))
 
 
 class ToolHandler:
@@ -161,7 +233,7 @@ class ToolHandler:
         if cached is not None:
             log.info("CACHE HIT for %s", tool_name)
             self._emit_detail("Using cached data")
-            result_json = json.dumps(cached, default=str)
+            result_json = to_model_json(tool_name, cached)
             log.debug("  cached result: %d chars", len(result_json))
             return result_json
 
@@ -169,7 +241,7 @@ class ToolHandler:
         try:
             result = self._dispatch(tool_name, tool_input)
             self._set_cached(tool_name, tool_input, result)
-            result_json = json.dumps(result, default=str)
+            result_json = to_model_json(tool_name, result)
             log.info("Tool %s completed — result: %d chars", tool_name, len(result_json))
             return result_json
         except Exception as exc:
