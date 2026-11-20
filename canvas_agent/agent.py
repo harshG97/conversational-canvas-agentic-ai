@@ -60,6 +60,29 @@ MAX_TOOL_ROUNDS = 15  # safety limit for agentic loop iterations
 _TRIMMED = "[previous data omitted]"
 
 
+def _friendly_api_error(exc: Exception, model: str) -> str | None:
+    """Map common LLM API errors to a readable message (None = unknown)."""
+    status = getattr(exc, "status_code", None)
+    text = str(exc).lower()
+    if status == 413 or (status == 429 and ("request too large" in text or "tokens per minute" in text)):
+        return (
+            f"This question needs more data than `{model}` allows on its current "
+            "rate limit. Try a shorter time range or a single course, or switch "
+            "to a different model in the sidebar."
+        )
+    if status == 429:
+        return (
+            f"Rate limit reached for `{model}`. Wait a minute and try again, "
+            "or switch to another model in the sidebar."
+        )
+    if status in (401, 403):
+        return (
+            f"The API key for `{model}` was rejected. Check the key in your "
+            "`.env` file (or Streamlit Secrets when deployed)."
+        )
+    return None
+
+
 class Agent:
     """Runs the agentic tool-use loop between an LLM and Canvas LMS.
 
@@ -189,6 +212,7 @@ class Agent:
         """
         self._trim_history()
         system_prompt = build_system_prompt()
+        turn_start = len(self._messages)
         self._messages.append({"role": "user", "content": user_message})
         log.info("chat() called — user: %r  (%d messages in history)",
                  user_message[:80], len(self._messages))
@@ -196,11 +220,20 @@ class Agent:
         for round_num in range(1, MAX_TOOL_ROUNDS + 1):
             log.info("LLM round %d — sending %d messages to %s",
                      round_num, len(self._messages), self.model)
-            response = self._provider.chat(
-                system=system_prompt,
-                messages=self._messages,
-                on_text_chunk=self._on_text_chunk,
-            )
+            try:
+                response = self._provider.chat(
+                    system=system_prompt,
+                    messages=self._messages,
+                    on_text_chunk=self._on_text_chunk,
+                )
+            except Exception as exc:
+                message = _friendly_api_error(exc, self.model)
+                if message is None:
+                    raise
+                log.warning("LLM request failed (%s): %s", type(exc).__name__, exc)
+                # Roll back this turn so the history stays valid for the next question.
+                del self._messages[turn_start:]
+                return message
 
             self._messages.append(
                 self._provider.build_assistant_message(response)
