@@ -12,12 +12,11 @@ from .tool_handler import ToolHandler
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-current_date = datetime.now(ZoneInfo("America/New_York")).strftime("%A, %B %d, %Y")
-print(f"Current date: {current_date}")
-
 log = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = f"""\
+_ET = ZoneInfo("America/New_York")
+
+_SYSTEM_PROMPT_TEMPLATE = """\
 You are a helpful academic assistant connected to the user's Canvas LMS.
 You can look up their courses, upcoming assignments, quizzes, and deadlines.
 You can also add deadlines to the user's Google Calendar.
@@ -39,6 +38,15 @@ Guidelines:
   pass a larger days_ahead value to the tool.
 - Remember that today's date is {current_date}.
 """
+
+
+def build_system_prompt(now: datetime | None = None) -> str:
+    """Return the system prompt with today's date (US Eastern).
+
+    Built on every request so long-running servers never use a stale date.
+    """
+    now = now or datetime.now(_ET)
+    return _SYSTEM_PROMPT_TEMPLATE.format(current_date=now.strftime("%A, %B %d, %Y"))
 
 DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
 DEFAULT_KEEP_TURNS = 6  # number of recent messages to keep fully intact
@@ -174,6 +182,7 @@ class Agent:
         Streams text tokens via the on_text_chunk callback as they arrive.
         """
         self._trim_history()
+        system_prompt = build_system_prompt()
         self._messages.append({"role": "user", "content": user_message})
         log.info("chat() called — user: %r  (%d messages in history)",
                  user_message[:80], len(self._messages))
@@ -182,7 +191,7 @@ class Agent:
             log.info("LLM round %d — sending %d messages to %s",
                      round_num, len(self._messages), self.model)
             response = self._provider.chat(
-                system=SYSTEM_PROMPT,
+                system=system_prompt,
                 messages=self._messages,
                 on_text_chunk=self._on_text_chunk,
             )
