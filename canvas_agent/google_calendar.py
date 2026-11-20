@@ -222,7 +222,6 @@ class GoogleCalendarClient:
         deadlines: dict,
         *,
         course_filter: str | None = None,
-        days_ahead: int | None = None,
     ) -> dict:
         """Add deadlines to Google Calendar.
 
@@ -230,8 +229,8 @@ class GoogleCalendarClient:
             deadlines: Dict from get_all_upcoming_deadlines
                        {course_name: [items...]}
             course_filter: Optional course name to limit to.
-            days_ahead: Optional max days from now. Only deadlines
-                        due within this window are added.
+                           (The date window is applied when the
+                           deadlines are fetched.)
 
         Returns:
             Summary dict with added/skipped/failed counts.
@@ -240,12 +239,6 @@ class GoogleCalendarClient:
         skipped = 0
         failed = 0
         added_items: list[str] = []
-
-        from datetime import timezone
-        now = datetime.now(timezone.utc)
-        cutoff = now + timedelta(days=days_ahead) if days_ahead else None
-        if cutoff:
-            log.info("  date cutoff: only deadlines before %s", cutoff.isoformat())
 
         for course_name, items in deadlines.items():
             if course_filter and course_filter.lower() not in course_name.lower():
@@ -268,12 +261,6 @@ class GoogleCalendarClient:
                 except (ValueError, TypeError):
                     log.warning("  bad date for %s: %s", name, due_at)
                     failed += 1
-                    continue
-
-                # Apply days_ahead filter
-                if cutoff and due_dt > cutoff:
-                    log.debug("  skipping %s (due %s, beyond %d-day window)", name, due_at, days_ahead)
-                    skipped += 1
                     continue
 
                 summary = f"{course_name} — {name}"

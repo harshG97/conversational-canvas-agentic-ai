@@ -2,6 +2,25 @@
 
 from __future__ import annotations
 
+# Shared date-window inputs. The system prompt lists ready-made ranges
+# for common phrases ("this week", "next week", ...).
+_DATE_RANGE_PROPS = {
+    "start_date": {
+        "type": "string",
+        "description": (
+            "Optional: first day to include, YYYY-MM-DD (US Eastern). "
+            "Defaults to today. Items already past due are never returned."
+        ),
+    },
+    "end_date": {
+        "type": "string",
+        "description": (
+            "Optional: last day to include, YYYY-MM-DD (US Eastern, inclusive). "
+            "Defaults to 30 days from today."
+        ),
+    },
+}
+
 TOOLS = [
     {
         "name": "get_courses",
@@ -20,7 +39,7 @@ TOOLS = [
         "description": (
             "Get upcoming assignments (with due dates in the future) for a "
             "specific course. Returns assignment name, due date, points, "
-            "submission status, and link. By default only the next 30 days."
+            "submission status, and link. Filter by start_date / end_date."
         ),
         "input_schema": {
             "type": "object",
@@ -29,14 +48,7 @@ TOOLS = [
                     "type": "integer",
                     "description": "The Canvas course ID.",
                 },
-                "days_ahead": {
-                    "type": "integer",
-                    "description": (
-                        "Optional: max days from today to include. "
-                        "Defaults to 30. Pass a larger value for broader queries "
-                        "(e.g. 90 for the semester)."
-                    ),
-                },
+                **_DATE_RANGE_PROPS,
             },
             "required": ["course_id"],
         },
@@ -46,7 +58,7 @@ TOOLS = [
         "description": (
             "Get upcoming quizzes (with due dates in the future) for a "
             "specific course. Returns quiz title, due date, points, "
-            "and link. By default only the next 30 days."
+            "and link. Filter by start_date / end_date."
         ),
         "input_schema": {
             "type": "object",
@@ -55,14 +67,7 @@ TOOLS = [
                     "type": "integer",
                     "description": "The Canvas course ID.",
                 },
-                "days_ahead": {
-                    "type": "integer",
-                    "description": (
-                        "Optional: max days from today to include. "
-                        "Defaults to 30. Pass a larger value for broader queries "
-                        "(e.g. 90 for the semester)."
-                    ),
-                },
+                **_DATE_RANGE_PROPS,
             },
             "required": ["course_id"],
         },
@@ -72,20 +77,13 @@ TOOLS = [
         "description": (
             "Get ALL upcoming assignments and quizzes across ALL enrolled "
             "courses. Use this when the user asks about upcoming deadlines "
-            "without specifying a particular course. By default only the "
-            "next 30 days."
+            "without specifying a particular course. Filter by "
+            "start_date / end_date."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "days_ahead": {
-                    "type": "integer",
-                    "description": (
-                        "Optional: max days from today to include. "
-                        "Defaults to 30. Pass a larger value for broader queries "
-                        "(e.g. 90 for the semester)."
-                    ),
-                },
+                **_DATE_RANGE_PROPS,
             },
             "required": [],
         },
@@ -109,8 +107,8 @@ TOOLS = [
             "Add upcoming assignment and quiz deadlines to the user's "
             "Google Calendar. Fetches all upcoming deadlines and creates "
             "calendar events with reminders. Skips duplicates already in "
-            "the calendar. Optionally filter by course name and/or limit "
-            "to deadlines within a certain number of days."
+            "the calendar. Optionally filter by course name and/or "
+            "start_date / end_date."
         ),
         "input_schema": {
             "type": "object",
@@ -123,13 +121,7 @@ TOOLS = [
                         "'CS 6601 - Artificial Intelligence')."
                     ),
                 },
-                "days_ahead": {
-                    "type": "integer",
-                    "description": (
-                        "Optional: only add deadlines due within this many "
-                        "days from today. E.g. 7 for this week, 1 for tomorrow."
-                    ),
-                },
+                **_DATE_RANGE_PROPS,
             },
             "required": [],
         },

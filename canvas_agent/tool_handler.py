@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable
 
 from .canvas_client import CanvasClient
+from .dates import resolve_range
 
 log = logging.getLogger(__name__)
 
@@ -71,6 +72,15 @@ def parse_days_ahead(value: Any, default: int = 30, min_days: int = 1, max_days:
         return max_days
     return n
 
+
+def resolve_tool_range(inp: dict):
+    """Resolve a tool's start_date / end_date (or legacy days_ahead) input."""
+    days = inp.get("days_ahead")
+    return resolve_range(
+        inp.get("start_date"),
+        inp.get("end_date"),
+        days_ahead=parse_days_ahead(days) if days is not None else None,
+    )
 
 
 class ToolHandler:
@@ -171,17 +181,15 @@ class ToolHandler:
             return self._client.get_courses()
 
         if name == "get_upcoming_assignments":
+            start, end = resolve_tool_range(inp)
             return self._client.get_assignments(
-                inp["course_id"],
-                upcoming_only=True,
-                days_ahead=parse_days_ahead(inp.get("days_ahead", 30)),
+                inp["course_id"], upcoming_only=True, start=start, end=end,
             )
 
         if name == "get_upcoming_quizzes":
+            start, end = resolve_tool_range(inp)
             return self._client.get_quizzes(
-                inp["course_id"],
-                upcoming_only=True,
-                days_ahead=parse_days_ahead(inp.get("days_ahead", 30)),
+                inp["course_id"], upcoming_only=True, start=start, end=end,
             )
 
         if name == "get_all_upcoming_deadlines":
@@ -195,8 +203,8 @@ class ToolHandler:
         raise ValueError(f"Unknown tool: {name}")
 
     def _get_all_upcoming(self, inp: dict) -> dict:
-        days_ahead = parse_days_ahead(inp.get("days_ahead", 30))
-        log.info("_get_all_upcoming: fetching courses (days_ahead=%s)", days_ahead)
+        start, end = resolve_tool_range(inp)
+        log.info("_get_all_upcoming: fetching courses (window %s → %s)", start, end)
         courses = self._client.get_courses()
         self._emit_detail(f"Found {len(courses)} active courses")
         log.info("_get_all_upcoming: scanning %d courses concurrently", len(courses))
@@ -209,14 +217,14 @@ class ToolHandler:
             self._emit_detail(f"Checking: {cname}")
             try:
                 assignments = self._client.get_assignments(
-                    cid, upcoming_only=True, days_ahead=days_ahead
+                    cid, upcoming_only=True, start=start, end=end
                 )
             except Exception as exc:
                 log.warning("  assignments failed for %s: %s", cname, exc)
                 assignments = []
             try:
                 quizzes = self._client.get_quizzes(
-                    cid, upcoming_only=True, days_ahead=days_ahead
+                    cid, upcoming_only=True, start=start, end=end
                 )
             except Exception as exc:
                 log.warning("  quizzes failed for %s: %s", cname, exc)
@@ -251,13 +259,15 @@ class ToolHandler:
         from .google_calendar import GoogleCalendarClient
 
         course_filter = inp.get("course_name")
-        days_ahead = parse_days_ahead(inp.get("days_ahead", 30))
-        log.info("_add_to_calendar: course_filter=%s, days_ahead=%s", course_filter, days_ahead)
+        range_inp = {
+            k: inp[k] for k in ("start_date", "end_date", "days_ahead") if k in inp
+        }
+        log.info("_add_to_calendar: course_filter=%s, range=%s", course_filter, range_inp)
 
-        # Fetch deadlines (reuses cache if available)
+        # Fetch deadlines for the requested window
         self._emit_detail("Fetching upcoming deadlines...")
         try:
-            deadlines = self._dispatch("get_all_upcoming_deadlines", {})
+            deadlines = self._dispatch("get_all_upcoming_deadlines", range_inp)
         except Exception as exc:
             log.error("Failed to fetch deadlines for calendar: %s", exc)
             return json.dumps({"error": f"Failed to fetch deadlines: {exc}"})
@@ -275,7 +285,7 @@ class ToolHandler:
 
         self._emit_detail("Creating calendar events...")
         try:
-            result = gcal.add_deadlines(deadlines, course_filter=course_filter, days_ahead=days_ahead)
+            result = gcal.add_deadlines(deadlines, course_filter=course_filter)
             log.info("Calendar result: %s", result)
             return json.dumps(result, default=str)
         except Exception as exc:

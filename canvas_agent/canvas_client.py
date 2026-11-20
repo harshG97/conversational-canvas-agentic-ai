@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -97,17 +97,20 @@ class CanvasClient:
         course_id: int,
         *,
         upcoming_only: bool = False,
-        days_ahead: int | None = 30,
+        start: datetime | None = None,
+        end: datetime | None = None,
         order_by: str = "due_at",
     ) -> list[dict]:
         """Return assignments for a course, optionally only upcoming ones.
 
         Args:
-            days_ahead: Only include items due within this many days.
-                        ``None`` means no upper bound. Default 30.
+            start: With ``upcoming_only``, skip items due before this
+                   (aware datetime). Defaults to now.
+            end:   With ``upcoming_only``, skip items due after this
+                   (aware datetime). ``None`` means no upper bound.
         """
-        log.info("get_assignments(course_id=%s, upcoming_only=%s, days_ahead=%s)",
-                 course_id, upcoming_only, days_ahead)
+        log.info("get_assignments(course_id=%s, upcoming_only=%s, start=%s, end=%s)",
+                 course_id, upcoming_only, start, end)
         params: dict = {"order_by": order_by, "include[]": "submission"}
 
         # When we only need upcoming items, skip pagination — one page is enough.
@@ -120,8 +123,8 @@ class CanvasClient:
                 f"/courses/{course_id}/assignments", params
             )
 
-        now = datetime.now(timezone.utc)
-        cutoff = now + timedelta(days=days_ahead) if days_ahead else None
+        window_start = start or datetime.now(timezone.utc)
+        cutoff = end
         results = []
         for a in items:
             due_raw = a.get("due_at")
@@ -133,11 +136,11 @@ class CanvasClient:
                 due_dt = _parse_due(due_raw)
                 if due_dt is None:
                     continue
-                if due_dt < now:
+                if due_dt < window_start:
                     log.debug("  skipping past-due assignment: %s (due %s)", a.get("name"), due_raw)
                     continue
                 if cutoff and due_dt > cutoff:
-                    log.debug("  skipping beyond-%d-day window: %s (due %s)", days_ahead, a.get("name"), due_raw)
+                    log.debug("  skipping beyond window end: %s (due %s)", a.get("name"), due_raw)
                     continue
 
             # Convert to Eastern for LLM display
@@ -160,23 +163,26 @@ class CanvasClient:
         course_id: int,
         *,
         upcoming_only: bool = False,
-        days_ahead: int | None = 30,
+        start: datetime | None = None,
+        end: datetime | None = None,
     ) -> list[dict]:
         """Return quizzes for a course, optionally only upcoming ones.
 
         Args:
-            days_ahead: Only include items due within this many days.
-                        ``None`` means no upper bound. Default 30.
+            start: With ``upcoming_only``, skip items due before this
+                   (aware datetime). Defaults to now.
+            end:   With ``upcoming_only``, skip items due after this
+                   (aware datetime). ``None`` means no upper bound.
         """
-        log.info("get_quizzes(course_id=%s, upcoming_only=%s, days_ahead=%s)",
-                 course_id, upcoming_only, days_ahead)
+        log.info("get_quizzes(course_id=%s, upcoming_only=%s, start=%s, end=%s)",
+                 course_id, upcoming_only, start, end)
         if upcoming_only:
             items = self._get_single_page(f"/courses/{course_id}/quizzes")
         else:
             items = self._get_paginated(f"/courses/{course_id}/quizzes")
 
-        now = datetime.now(timezone.utc)
-        cutoff = now + timedelta(days=days_ahead) if days_ahead else None
+        window_start = start or datetime.now(timezone.utc)
+        cutoff = end
         results = []
         for q in items:
             due_raw = q.get("due_at")
@@ -188,11 +194,11 @@ class CanvasClient:
                 due_dt = _parse_due(due_raw)
                 if due_dt is None:
                     continue
-                if due_dt < now:
+                if due_dt < window_start:
                     log.debug("  skipping past-due quiz: %s (due %s)", q.get("title"), due_raw)
                     continue
                 if cutoff and due_dt > cutoff:
-                    log.debug("  skipping beyond-%d-day window: %s (due %s)", days_ahead, q.get("title"), due_raw)
+                    log.debug("  skipping beyond window end: %s (due %s)", q.get("title"), due_raw)
                     continue
 
             # Convert to Eastern for LLM display

@@ -7,6 +7,7 @@ import os
 from typing import Callable
 
 from .canvas_client import CanvasClient
+from .dates import date_reference
 from .providers import GroqProvider, create_provider
 from .tool_handler import ToolHandler
 from datetime import datetime
@@ -33,20 +34,22 @@ Guidelines:
 - If something goes wrong with the Canvas API, explain the error clearly.
 - When the user asks to add deadlines to their calendar, use the
   add_deadlines_to_calendar tool. You can optionally filter by course name.
-- By default, only deadlines within the next 30 days are fetched. If the user
-  asks about deadlines further out (e.g. "this semester", "next 3 months"),
-  pass a larger days_ahead value to the tool.
-- Remember that today's date is {current_date}.
+- Deadline tools take start_date / end_date. For time phrases, copy the
+  matching range from the date table below; do not guess dates.
+- Start your answer by stating the date range you used
+  (e.g. "Due Mon Nov 23 to Sun Nov 29:").
+
+{date_reference}
 """
 
 
 def build_system_prompt(now: datetime | None = None) -> str:
-    """Return the system prompt with today's date (US Eastern).
+    """Return the system prompt with today's date table (US Eastern).
 
     Built on every request so long-running servers never use a stale date.
     """
     now = now or datetime.now(_ET)
-    return _SYSTEM_PROMPT_TEMPLATE.format(current_date=now.strftime("%A, %B %d, %Y"))
+    return _SYSTEM_PROMPT_TEMPLATE.format(date_reference=date_reference(now))
 
 DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
 DEFAULT_KEEP_TURNS = 6  # number of recent messages to keep fully intact
