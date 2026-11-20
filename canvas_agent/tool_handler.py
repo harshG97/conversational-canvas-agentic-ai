@@ -229,8 +229,16 @@ class ToolHandler:
             except Exception as exc:
                 log.warning("  quizzes failed for %s: %s", cname, exc)
                 quizzes = []
+            # Drop assignment copies of classic quizzes we already have,
+            # and label New Quizzes (assignment-only) as quizzes.
+            quiz_ids = {q.get("id") for q in quizzes}
+            dupes = [a for a in assignments if a.get("quiz_id") in quiz_ids]
+            if dupes:
+                log.debug("  %s: dropping %d quiz duplicates", cname, len(dupes))
             items = [
-                {**a, "type": "assignment"} for a in assignments
+                {**a, "type": "quiz" if a.get("is_new_quiz") else "assignment"}
+                for a in assignments
+                if a.get("quiz_id") not in quiz_ids
             ] + [
                 {**q, "type": "quiz"} for q in quizzes
             ]

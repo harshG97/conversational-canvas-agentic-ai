@@ -153,6 +153,10 @@ class CanvasClient:
                     "points_possible": a.get("points_possible"),
                     "html_url": a.get("html_url", ""),
                     "has_submitted": _has_submitted(a),
+                    # Classic quizzes also appear as assignments (quiz_id set);
+                    # New Quizzes appear only as assignments.
+                    "quiz_id": a.get("quiz_id"),
+                    "is_new_quiz": bool(a.get("is_quiz_lti_assignment")),
                 }
             )
         log.info("get_assignments → %d results (from %d raw)", len(results), len(items))
